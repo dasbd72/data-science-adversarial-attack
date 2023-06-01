@@ -4,7 +4,7 @@ import torch
 from numpy import ndarray
 from scipy import sparse as sp
 
-from attacker import RND
+from attacker import RND, Nettack
 from core import Judge
 
 
@@ -38,9 +38,24 @@ def attack(adj: sp.csr_matrix, features: sp.csr_matrix, labels: ndarray,
     """
     # TODO: Setup your attack model
     # print(f'other args: {kwargs}')
-    model = RND()
+
+    # import numpy as np
+    # np.set_printoptions(threshold=np.inf)
+    # np.random.shuffle(idx_test)
+    # print(idx_test)
+    # exit(0)
+
+    model = Nettack()
     model = model.to(device)
-    model.attack(features, adj, labels, idx_train, target_node, n_perturbations=n_perturbations, **kwargs)
+    model.attack(ori_features=features,
+                 ori_adj=adj,
+                 labels=labels,
+                 idx_train=idx_train,
+                 idx_val=idx_val,
+                 idx_test=idx_test,
+                 target_node=target_node,
+                 n_perturbations=n_perturbations,
+                 **kwargs)
     return model.modified_adj
 
 
