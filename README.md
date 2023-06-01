@@ -45,3 +45,10 @@ python3 main.py --input_file target_nodes_list.txt --data_path ./data/data.pkl -
   * implement your own attacker
 * main.py
   * setup your attacker
+
+## Packages
+
+* python=3.8.16
+* numpy=1.24.3
+* scipy=1.10.1
+* pytorch=1.12.1=py3.8_cuda11.3_cudnn8.3.2_0
