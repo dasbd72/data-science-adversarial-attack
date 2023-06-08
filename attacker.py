@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from torch.nn.modules.module import Module
 from core.gcn import GCN
 from core import utils
+import os
+from multiprocessing import Pool
 
 
 class BaseAttack(Module):
@@ -149,13 +151,12 @@ class Nettack(BaseAttack):
             Number of perturbations on the input graph. Perturbations could be edge removals/additions.
         """
         nnodes = ori_adj.shape[0]
+        multithread = True
 
-        surrogate = GCN(nfeat=ori_features.shape[1], nhid=8,
+        surrogate = GCN(nfeat=ori_features.shape[1], nhid=16,
                         nclass=labels.max().item() + 1, dropout=0.5,
                         with_relu=False, with_bias=False, device=self.device)
-
-        # surrogate.fit(ori_features, ori_adj, labels, idx_train, idx_val)
-        surrogate.fit(ori_features, ori_adj, labels, np.concatenate([idx_train, idx_val, idx_test]), idx_val)
+        surrogate.fit(ori_features, ori_adj, labels, idx_train, idx_val)
 
         A = ori_adj.tolil(True)
         W1 = surrogate.gc1.weight.detach().cpu().numpy()
@@ -167,7 +168,11 @@ class Nettack(BaseAttack):
         # candidate_nodes = [x for x in range(nnodes) if x != target_node]
 
         # choose top scored nodes as candidates
-        scores = [(v, self.compute_structure_score(A, XW, target_node, v, labels[target_node])) for v in range(nnodes) if v != target_node]
+        if multithread:
+            with Pool(processes=os.cpu_count()) as pool:
+                scores = pool.map(self.compute_structure_score_mp, [(A, XW, target_node, v, labels[target_node]) for v in range(nnodes) if v != target_node])
+        else:
+            scores = [(v, self.compute_structure_score(A, XW, target_node, v, labels[target_node])) for v in range(nnodes) if v != target_node]
         scores = sorted(scores, key=lambda x: x[1], reverse=True)
         candidate_nodes = [x[0] for x in scores[:100]]
 
@@ -176,11 +181,19 @@ class Nettack(BaseAttack):
         for perturb in range(n_perturbations):
             best_score = float('-inf')
             best_node = None
-            for v in candidate_nodes:
-                score = self.compute_structure_score(A, XW, target_node, v, labels[target_node])
-                if score > best_score:
-                    best_score = score
-                    best_node = v
+            if multithread:
+                with Pool(processes=os.cpu_count()) as pool:
+                    scores = pool.map(self.compute_structure_score_mp, [(A, XW, target_node, v, labels[target_node]) for v in candidate_nodes])
+                for v, score in scores:
+                    if score > best_score:
+                        best_score = score
+                        best_node = v
+            else:
+                for v in candidate_nodes:
+                    score = self.compute_structure_score(A, XW, target_node, v, labels[target_node])
+                    if score > best_score:
+                        best_score = score
+                        best_node = v
             if A[target_node, best_node] == 1:
                 A[target_node, best_node] = 0
                 A[best_node, target_node] = 0
@@ -219,6 +232,19 @@ class Nettack(BaseAttack):
             A[target_node, v] = 0
             A[v, target_node] = 0
         return loss
+
+    def compute_structure_score_mp(self, args):
+        _A, XW, target_node, v, c_old = args
+        A = _A.copy()
+        if A[target_node, v]:
+            A[target_node, v] = 0
+            A[v, target_node] = 0
+            loss = self.compute_surrogate_loss(A, XW, target_node, c_old)
+        else:
+            A[target_node, v] = 1
+            A[v, target_node] = 1
+            loss = self.compute_surrogate_loss(A, XW, target_node, c_old)
+        return v, loss
 
     def compute_surrogate_loss(self, A, XW, target_node, c_old):
         A_hat = self.compute_A_hat(A)
