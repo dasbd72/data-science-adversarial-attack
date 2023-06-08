@@ -151,7 +151,8 @@ class Nettack(BaseAttack):
             Number of perturbations on the input graph. Perturbations could be edge removals/additions.
         """
         nnodes = ori_adj.shape[0]
-        multithread = True
+        # multithread = True
+        multithread = False
 
         surrogate = GCN(nfeat=ori_features.shape[1], nhid=16,
                         nclass=labels.max().item() + 1, dropout=0.5,
@@ -174,7 +175,7 @@ class Nettack(BaseAttack):
         else:
             scores = [(v, self.compute_structure_score(A, XW, target_node, v, labels[target_node])) for v in range(nnodes) if v != target_node]
         scores = sorted(scores, key=lambda x: x[1], reverse=True)
-        candidate_nodes = [x[0] for x in scores[:100]]
+        candidate_nodes = [x[0] for x in scores[:300]]
 
         # Pick n_perturbations nodes to attack from the candidate nodes
         perturbed_nodes = []
